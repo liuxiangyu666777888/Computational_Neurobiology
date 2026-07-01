@@ -119,9 +119,9 @@ Figure~\ref{fig:qualitative} shows representative 2.5D outputs. The denoised ima
 
 \section{Discussion}
 
-The results support two conclusions. First, residual U-Nets are effective baselines for paired T1 MRI denoising: every trained model reduces MAE and MSE and improves PSNR and SSIM compared with the noisy input. Second, 2.5D context is useful but does not require a full 3D model. The 2.5D model has nearly the same computational cost as the 2D model while giving the best PSNR and SSIM in this experiment.
+All three residual U-Net variants improve the noisy input, which indicates that the paired denoising task is well suited to supervised residual learning. The comparison between 2D and 2.5D is especially informative. Adding the neighboring axial slices gives the network limited anatomical context across the slice direction, but it does not substantially increase model complexity because the convolutions remain two-dimensional. This likely explains why the 2.5D model achieves the best PSNR and SSIM while staying close to the computational cost of the 2D baseline.
 
-The 3D result should be interpreted as a practical baseline rather than a fully optimized volumetric system. Full-volume 3D inference is expensive, so the implemented model uses patch training and center-slice prediction with fixed depth context during evaluation. This reduces memory use but also limits global anatomical context and may introduce train-test differences. A stronger 3D experiment would use more patches per case, longer training, and overlap-averaged sliding-window inference over the whole volume.
+The 3D model also improves the noisy baseline, but its advantage is not visible under the current setting. This does not necessarily mean that volumetric modeling is unhelpful for MRI denoising. In this experiment, the 3D U-Net is trained on patches to fit memory constraints, and evaluation predicts center slices from a fixed depth window rather than reconstructing full volumes with dense overlap. These choices make the experiment feasible on the available hardware, but they reduce the amount of global context used by the model and make optimization more difficult. With longer training, more patch samples per case, and overlap-averaged sliding-window inference, a 3D model may become more competitive.
 
 \section{Conclusion}
 
