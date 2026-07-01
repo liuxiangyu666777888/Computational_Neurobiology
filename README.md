@@ -1,44 +1,34 @@
 # T1 MRI Denoising Experiment
 
-This project implements the selected final-task option: supervised T1 MRI denoising from `T1_noisy.nii.gz` to `T1_clean.nii.gz`.
-
-## Authoritative Deliverables
-
-The full-data experiment has been completed on all 600 cases.
-
-Use these files for submission:
+This repository contains the course final-project experiment for supervised T1 MRI denoising:
 
 ```text
-report_final.md
-report_final.pdf
-runs/denoise_unet/eval/metrics_summary.csv
-runs/denoise_unet/eval/case_metrics.csv
-runs/denoise_unet/eval/figures/
+T1_noisy.nii.gz -> T1_clean.nii.gz
 ```
 
-Historical reports are kept only for traceability:
+The current version compares three residual U-Net variants on the same 600-case dataset:
 
-```text
-report.md                 initial template
-report_final_24case.md    earlier 24-case subset run
-report_final_mini.md      earlier mini smoke run
-```
+- `train.py` / `evaluate.py`: 2D Residual U-Net
+- `train25d.py` / `evaluate25d.py`: 2.5D Residual U-Net with adjacent axial slices as channels
+- `train3d.py` / `evaluate3d.py`: patch-based 3D Residual U-Net
 
-The reproducible full-run configuration is recorded in `configs/denoise_full.json`.
+The NeurIPS-style English report is in `report_nips/main.tex`, with the compiled PDF at `report_nips/main.pdf`.
 
 ## Server Setup
+
+Experiments were run on:
+
+```text
+/home/gmemory/lxy/计算神经学final_task
+```
+
+Create the environment:
 
 ```bash
 cd /home/gmemory/lxy/计算神经学final_task
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
-```
-
-If exact environment reproduction is required, install from `requirements-lock.txt` after it has been generated on the server with:
-
-```bash
-.venv/bin/pip freeze > requirements-lock.txt
 ```
 
 ## Data
@@ -62,21 +52,52 @@ The expected data root is:
 data/cn_project_t1_noise2
 ```
 
-## Run
+Prepare case-level splits:
 
 ```bash
 .venv/bin/python scripts/prepare_data.py --data-root data/cn_project_t1_noise2 --out-dir splits
-.venv/bin/python train.py --data-root data/cn_project_t1_noise2 --splits-dir splits --epochs 40 --batch-size 24 --lr 1e-4 --device cuda --grad-clip 1.0 --out-dir runs/denoise_unet
+```
+
+## Training and Evaluation
+
+2D:
+
+```bash
+.venv/bin/python train.py --data-root data/cn_project_t1_noise2 --splits-dir splits --epochs 40 --batch-size 24 --lr 1e-4 --device cuda --out-dir runs/denoise_unet
 .venv/bin/python evaluate.py --data-root data/cn_project_t1_noise2 --split splits/test.csv --ckpt runs/denoise_unet/best.pt --out-dir runs/denoise_unet/eval
 ```
 
-Optional training features:
+2.5D:
 
 ```bash
---amp             enable CUDA mixed precision
---augment         enable paired random horizontal/vertical flips
---lr-scheduler    enable ReduceLROnPlateau
---patience 10     stop after 10 epochs without validation improvement
+.venv/bin/python train25d.py --data-root data/cn_project_t1_noise2 --splits-dir splits --epochs 40 --batch-size 24 --lr 1e-4 --device cuda --patience 6 --out-dir runs/denoise_unet25d
+.venv/bin/python evaluate25d.py --data-root data/cn_project_t1_noise2 --split splits/test.csv --ckpt runs/denoise_unet25d/best.pt --out-dir runs/denoise_unet25d/eval
+```
+
+3D:
+
+```bash
+.venv/bin/python train3d.py --data-root data/cn_project_t1_noise2 --splits-dir splits --epochs 8 --batch-size 2 --patch-size 32 96 96 --device cuda --out-dir runs/denoise_unet3d
+.venv/bin/python evaluate3d.py --data-root data/cn_project_t1_noise2 --split splits/test.csv --ckpt runs/denoise_unet3d/best.pt --max-slices-per-case 48 --out-dir runs/denoise_unet3d/eval
+```
+
+## Results
+
+Aggregate result CSVs used by the report are copied into `report_nips/results/`:
+
+```text
+report_nips/results/metrics_2d.csv
+report_nips/results/metrics_25d.csv
+report_nips/results/metrics_3d.csv
+```
+
+The best model in the completed comparison is the 2.5D Residual U-Net:
+
+```text
+MAE 0.002758
+MSE 1.747987e-05
+PSNR 47.849837 dB
+SSIM 0.993208
 ```
 
 ## Tests
@@ -85,75 +106,12 @@ Optional training features:
 .venv/bin/python -m unittest discover -s tests
 ```
 
-## Smoke Test
+## Report Build
 
 ```bash
-.venv/bin/python train.py --data-root data/cn_project_t1_noise2 --splits-dir splits --epochs 1 --batch-size 2 --max-cases 8 --max-slices-per-case 8 --device cuda --out-dir runs/smoke
-.venv/bin/python evaluate.py --data-root data/cn_project_t1_noise2 --split splits/test.csv --ckpt runs/smoke/best.pt --max-cases 3 --max-slices-per-case 8 --out-dir runs/smoke/eval
-```
-
-## Completed 24-Case Run
-
-A 24-case subset experiment was completed on the server after transferring `subsets/cn_denoise_subset.tar`.
-
-Outputs:
-
-```text
-report_final_24case.md
-runs/denoise_unet_24case/metrics.csv
-runs/denoise_unet_24case/eval/metrics_summary.csv
-runs/denoise_unet_24case/eval/figures/
-splits_24/
-```
-
-Split:
-
-```text
-train 17, val 4, test 3
-```
-
-Test metrics:
-
-```text
-Noisy baseline: MAE 0.0036, MSE 0.000025, PSNR 46.8310, SSIM 0.9801
-Residual U-Net: MAE 0.0027, MSE 0.000015, PSNR 48.4807, SSIM 0.9943
-```
-
-Reproduce the completed 24-case run:
-
-```bash
-cd /home/gmemory/lxy/计算神经学final_task
-rm -rf data/cn_project_t1_noise2 splits_24 runs/denoise_unet_24case
-mkdir -p data
-tar -xf subsets/cn_denoise_subset.tar -C data
-.venv/bin/python scripts/prepare_data.py --data-root data/cn_project_t1_noise2 --out-dir splits_24
-.venv/bin/python train.py --data-root data/cn_project_t1_noise2 --splits-dir splits_24 --epochs 20 --batch-size 12 --max-slices-per-case 24 --device cuda --out-dir runs/denoise_unet_24case
-.venv/bin/python evaluate.py --data-root data/cn_project_t1_noise2 --split splits_24/test.csv --ckpt runs/denoise_unet_24case/best.pt --max-slices-per-case 24 --save-figures 3 --out-dir runs/denoise_unet_24case/eval
-.venv/bin/python scripts/plot_training_curve.py --metrics runs/denoise_unet_24case/metrics.csv --output runs/denoise_unet_24case/eval/training_curve.png
-```
-
-The final report is `report_final.md`. If PDF export is required, open `report_final.md` in a Markdown editor that supports local images and export to PDF, or use:
-
-```bash
-pandoc report_final.md -o report_final.pdf --pdf-engine=xelatex --resource-path=.
-```
-
-## Completed Mini Run
-
-Because the full 31GB data upload was slow over the current connection, a reproducible 8-case mini experiment was completed on the server.
-
-Outputs:
-
-```text
-report_final_mini.md
-runs/denoise_unet_mini_zero/metrics.csv
-runs/denoise_unet_mini_zero/eval/metrics_summary.csv
-runs/denoise_unet_mini_zero/eval/figures/1000509.png
-```
-
-Mini-test metrics:
-
-```text
-Noisy baseline: MAE 0.0031, MSE 0.000018, PSNR 47.4241, SSIM 0.9787
-Residual U-Net: MAE 0.0023, MSE 0.000011, PSNR 49.6866, SSIM 0.9943
+cd report_nips
+pdflatex -interaction=nonstopmode main.tex
+bibtex main
+pdflatex -interaction=nonstopmode main.tex
+pdflatex -interaction=nonstopmode main.tex
 ```

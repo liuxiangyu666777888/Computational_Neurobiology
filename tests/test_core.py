@@ -5,8 +5,8 @@ import unittest
 import numpy as np
 import torch
 
-from src.dataset import valid_slice_indices
-from src.model import ResidualUNet2D, straight_through_clamp
+from src.dataset import Patch3DDenoiseDataset, valid_slice_indices
+from src.model import ResidualUNet2D, ResidualUNet3D, straight_through_clamp
 
 
 class DatasetTests(unittest.TestCase):
@@ -25,11 +25,39 @@ class DatasetTests(unittest.TestCase):
 
         self.assertEqual(indices, [0, 1, 2])
 
+    def test_3d_patch_output_uses_depth_height_width_order(self) -> None:
+        volume = np.random.rand(12, 20, 8).astype(np.float32)
+
+        patch = Patch3DDenoiseDataset._crop_or_pad(volume, starts=(0, 0, 0), patch_size=(10, 18, 6))
+        tensor = torch.from_numpy(np.transpose(patch, (2, 0, 1))).unsqueeze(0).float()
+
+        self.assertEqual(tuple(tensor.shape), (1, 6, 10, 18))
+
 
 class ModelTests(unittest.TestCase):
     def test_forward_shape_and_range(self) -> None:
         model = ResidualUNet2D(base_channels=4)
         x = torch.rand(2, 1, 32, 32)
+
+        y = model(x)
+
+        self.assertEqual(tuple(y.shape), tuple(x.shape))
+        self.assertGreaterEqual(float(y.min()), 0.0)
+        self.assertLessEqual(float(y.max()), 1.0)
+
+    def test_25d_forward_outputs_center_slice_shape(self) -> None:
+        model = ResidualUNet2D(in_channels=3, out_channels=1, base_channels=4)
+        x = torch.rand(2, 3, 32, 32)
+
+        y = model(x)
+
+        self.assertEqual(tuple(y.shape), (2, 1, 32, 32))
+        self.assertGreaterEqual(float(y.min()), 0.0)
+        self.assertLessEqual(float(y.max()), 1.0)
+
+    def test_3d_forward_shape_and_range(self) -> None:
+        model = ResidualUNet3D(base_channels=2)
+        x = torch.rand(1, 1, 16, 32, 32)
 
         y = model(x)
 

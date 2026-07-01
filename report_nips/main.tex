@@ -1,8 +1,5 @@
 \documentclass{article}
 
-% Official NeurIPS 2026 style file.
-% Use [preprint] for a non-anonymous course report. For anonymous submission
-% style, change this line to: \usepackage{neurips_2026}
 \usepackage[preprint]{neurips_2026}
 
 \usepackage[utf8]{inputenc}
@@ -12,13 +9,12 @@
 \usepackage{booktabs}
 \usepackage{amsfonts}
 \usepackage{amsmath}
-\usepackage{nicefrac}
 \usepackage{microtype}
 \usepackage{xcolor}
 \usepackage{graphicx}
 \usepackage{siunitx}
 
-\title{T1 MRI Denoising with a 2D Residual U-Net}
+\title{Comparing 2D, 2.5D, and 3D Residual U-Nets for T1 MRI Denoising}
 
 \author{%
   Computational Neuroscience Final Project\\
@@ -31,68 +27,66 @@
 \maketitle
 
 \begin{abstract}
-Recovering clean anatomical structure from noisy magnetic resonance images is a practical image restoration problem with direct relevance to medical image analysis. This work evaluates a supervised denoising pipeline for paired T1 MRI volumes, where each noisy scan is matched with a clean target from the same subject. We train a 2D Residual U-Net on axial slices and use case-level data splits to prevent subject leakage. The full experiment includes 600 paired cases, divided into 420 training, 90 validation, and 90 test cases. On the held-out test set, the model reduces MAE from 0.0044 to 0.0028 and MSE from $3.72\times10^{-5}$ to $1.80\times10^{-5}$ relative to the noisy baseline. It also improves PSNR from 44.7757 dB to 47.7168 dB and SSIM from 0.9470 to 0.9930, with PSNR gains in all 90 test cases. These results show that residual slice-wise learning provides a simple, stable, and reproducible baseline for T1 MRI denoising.
+This project studies supervised denoising of paired T1-weighted MRI volumes. Each case provides a noisy T1 image and a clean target image from the same subject, allowing direct training and evaluation with image restoration metrics. We compare three residual U-Net variants: a 2D slice model, a 2.5D model that uses adjacent axial slices as input channels, and a patch-based 3D model. All methods are trained on the same 600-case dataset with case-level train, validation, and test splits. On the held-out test set, every learned model improves over the noisy input. Under a unified 48-slice-per-case evaluation protocol, the best result is obtained by the 2.5D Residual U-Net, which reduces MAE from 0.0044 to 0.0027, improves PSNR from 44.7988 dB to 47.8719 dB, and improves SSIM from 0.9552 to 0.9950. The results suggest that a small amount of through-plane context is useful for this task, while the 3D patch baseline is harder to optimize under the available training budget.
 \end{abstract}
 
 \section{Introduction}
 
-MRI denoising is a core image restoration problem. Given a noisy image $x$ and a clean target image $y$, the goal is to learn a mapping $f_\theta(x)$ that suppresses noise while preserving anatomical structure. This work focuses on paired T1 denoising because the input and target images belong to the same modality, have aligned spatial structure, and allow direct supervised training with standard restoration metrics.
+MRI denoising is a standard image restoration problem: given a noisy image $x$ and a clean target image $y$, the goal is to learn a mapping $f_\theta(x)$ that suppresses noise while preserving anatomical structure. This project uses the denoising option from the course final task because the input and target belong to the same modality and are spatially paired, which makes supervised training and quantitative evaluation straightforward.
 
-We implement a 2D Residual U-Net baseline. U-Net architectures are widely used in biomedical image analysis because the encoder-decoder structure captures multi-scale context while skip connections preserve spatial detail \citep{Ronneberger2015UNet}. For denoising, residual prediction is natural: noisy and clean images share most anatomical content, so the network mainly needs to estimate a correction term rather than synthesize a full image from scratch. The experiment evaluates whether this baseline improves pixel-level error and structural similarity over the noisy input.
+U-Net models are widely used in biomedical image analysis because encoder-decoder paths capture multi-scale context while skip connections preserve local detail \citep{Ronneberger2015UNet}. Volumetric U-Nets extend the same idea to 3D data \citep{Cicek20163DUNet}. In denoising, residual prediction is a natural design choice: the noisy and clean images share most anatomy, so the network only needs to learn a correction term. We therefore compare 2D, 2.5D, and 3D residual U-Net baselines on the same T1 MRI denoising task.
 
 \section{Data}
 
-The data root is \texttt{data/cn\_project\_t1\_noise2}. Each case directory contains:
-\begin{itemize}
-  \item \texttt{T1\_noisy.nii.gz}: the noisy T1 MRI volume;
-  \item \texttt{T1\_clean.nii.gz}: the paired clean T1 MRI volume.
-\end{itemize}
+The data root is \texttt{data/cn\_project\_t1\_noise2}. Each case directory contains \texttt{T1\_noisy.nii.gz} and \texttt{T1\_clean.nii.gz}. The experiment uses 600 complete paired cases. We split data at the case level with random seed 42, producing 420 training cases, 90 validation cases, and 90 test cases. Case-level splitting avoids leakage from putting slices of the same subject into different splits.
 
-The full experiment includes 600 complete paired cases. We split the data at the case level, using a fixed random seed of 42. The resulting train, validation, and test sets contain 420, 90, and 90 cases, respectively. Case-level splitting is important because slice-level random splitting could place different slices from the same subject into both training and test sets, causing data leakage.
-
-\section{Method}
+\section{Methods}
 
 \subsection{Preprocessing}
 
-For each case, the noisy and clean NIfTI volumes are loaded as 3D arrays. Intensities are normalized per case by computing the 1st and 99th percentiles over the joint foreground voxels from both noisy and clean images, then clipping and scaling values to $[0,1]$. We extract axial 2D slices and skip near-empty slices. Each slice is resized to $256\times256$ before being passed to the model. Evaluation metrics are computed on the same normalized and resized 2D slices used by the model.
+For each case, noisy and clean NIfTI volumes are loaded as 3D arrays. Intensities are normalized per case by computing the 1st and 99th percentiles over the joint foreground voxels from noisy and clean images, then clipping and scaling values to $[0,1]$. Near-empty axial slices are skipped. For 2D and 2.5D models, slices are resized to $256\times256$. For the 3D model, training uses cropped volumetric patches.
 
-\subsection{Residual U-Net}
+\subsection{Residual U-Net Variants}
 
-The model is a lightweight 2D U-Net with one-channel input and output. The encoder uses convolutional blocks and max pooling; the decoder uses transposed convolutions and skip connections. Instead of predicting the denoised image directly, the network predicts a residual $r_\theta(x)$:
+The 2D model takes one axial slice as input and predicts the denoised version of the same slice. The 2.5D model uses three adjacent axial slices, $(z-1,z,z+1)$, as input channels and predicts the clean center slice. This gives the network limited through-plane context while keeping the cheaper 2D convolutional architecture. The 3D model uses 3D convolutions and is trained on volumetric patches of size $32\times96\times96$ in depth, height, and width.
+
+All models predict a residual correction. For 2D and 2.5D, the output is
 \begin{equation}
-  \hat{y} = \mathrm{clip}(x + r_\theta(x), 0, 1).
+  \hat{y} = \mathrm{clip}(x_c + r_\theta(x), 0, 1),
 \end{equation}
-The final residual convolution is initialized to zero, so the initial model behaves like the noisy baseline. This makes training stable because the network starts from an identity-like solution and learns only the denoising correction.
+where $x_c$ is the input slice for 2D and the center slice for 2.5D. For 3D, the residual is added to the input patch. The final residual layer is zero-initialized so the initial network behaves like the noisy baseline.
 
-\subsection{Training objective}
+\subsection{Training}
 
 The loss combines L1 and MSE terms:
 \begin{equation}
   \mathcal{L}(\hat{y}, y) =
   \|\hat{y}-y\|_1 + 0.2\|\hat{y}-y\|_2^2.
 \end{equation}
-The L1 term encourages robust pixel-wise reconstruction, while the MSE term penalizes larger deviations. We use AdamW \citep{Kingma2015Adam} with learning rate $10^{-4}$ and weight decay $10^{-5}$. The model is trained for 40 epochs with batch size 24 on an NVIDIA RTX A6000 GPU. The checkpoint with the lowest validation loss is selected for final evaluation.
+All models use AdamW \citep{Kingma2015Adam} with learning rate $10^{-4}$ and weight decay $10^{-5}$. The 2D model is trained for 40 epochs with batch size 24. The 2.5D model is trained with the same learning rate and early stopping, selecting the best checkpoint at epoch 8. The 3D model is trained as a patch-based baseline with smaller batch size because volumetric convolutions require more memory.
 
 \section{Evaluation}
 
-We compare the trained model against the noisy input baseline on the held-out test set. The metrics are mean absolute error (MAE), mean squared error (MSE), peak signal-to-noise ratio (PSNR), and structural similarity index (SSIM) \citep{Wang2004SSIM}. MAE and MSE are better when lower; PSNR and SSIM are better when higher. All reported values are case-level means over the 90 test cases.
+We evaluate on the 90 held-out test cases using MAE, MSE, PSNR, and SSIM \citep{Wang2004SSIM}. MAE and MSE are lower-is-better; PSNR and SSIM are higher-is-better. Metrics are computed per case and then averaged across cases. To make the three methods directly comparable, all reported results use the same 48 uniformly sampled valid slices per test case.
 
 \section{Results}
 
-\subsection{Training behavior}
+\subsection{Training Behavior}
 
-The training loss decreases from 0.003040 at epoch 1 to 0.002538 at epoch 40. The best validation loss is 0.002698 and occurs at epoch 36. Figure~\ref{fig:training_curve} shows the training and validation curves.
+The 2D model reaches its best validation loss at epoch 36. The 2.5D model reaches its best validation loss at epoch 8 and then early-stops at epoch 14. The 3D patch model improves during its short run, but remains harder to optimize because each update sees fewer full anatomical contexts than the slice-based models.
 
 \begin{figure}[h]
   \centering
-  \includegraphics[width=0.85\linewidth]{figures/training_curve.png}
-  \caption{Training and validation loss curves. The best validation checkpoint occurs at epoch 36.}
-  \label{fig:training_curve}
+  \includegraphics[width=0.32\linewidth]{figures/curves/training_2d.png}
+  \includegraphics[width=0.32\linewidth]{figures/curves/training_25d.png}
+  \includegraphics[width=0.32\linewidth]{figures/curves/training_3d.png}
+  \caption{Training and validation loss curves for the 2D, 2.5D, and 3D residual U-Net variants.}
+  \label{fig:training_curves}
 \end{figure}
 
-\subsection{Quantitative results}
+\subsection{Quantitative Comparison}
 
-Table~\ref{tab:summary} summarizes the test-set results. The Residual U-Net improves every metric over the noisy baseline. It reduces MAE by 0.0016, reduces MSE by $1.92\times10^{-5}$, improves PSNR by 2.9411 dB, and improves SSIM by 0.0460. At the case level, the model achieves higher PSNR than the noisy baseline for all 90 test cases.
+Table~\ref{tab:summary} summarizes the test-set results. The 2.5D model gives the strongest numerical result among the implemented methods. It slightly improves over the 2D model, which suggests that adjacent slices provide useful context. The 3D model still improves over the noisy input, but it does not outperform the slice-based models under the current patch-based training and evaluation budget.
 
 \begin{table}[h]
   \centering
@@ -102,62 +96,38 @@ Table~\ref{tab:summary} summarizes the test-set results. The Residual U-Net impr
     \toprule
     Method & MAE $\downarrow$ & MSE $\downarrow$ & PSNR $\uparrow$ & SSIM $\uparrow$ \\
     \midrule
-    Noisy baseline & 0.0044 & $3.72\times10^{-5}$ & 44.7757 & 0.9470 \\
-    Residual U-Net & 0.0028 & $1.80\times10^{-5}$ & 47.7168 & 0.9930 \\
+    Noisy baseline & 0.0044 & $3.70\times10^{-5}$ & 44.7988 & 0.9552 \\
+    2D Residual U-Net & 0.0028 & $1.79\times10^{-5}$ & 47.7427 & 0.9949 \\
+    2.5D Residual U-Net & \textbf{0.0027} & $\mathbf{1.74\times10^{-5}}$ & \textbf{47.8719} & \textbf{0.9950} \\
+    3D Residual U-Net & 0.0030 & $2.00\times10^{-5}$ & 47.2754 & 0.9912 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-Table~\ref{tab:cases} lists the first 10 test cases from the case-level metric file. The full file is available at \texttt{runs/denoise\_unet/eval/case\_metrics.csv}.
+\subsection{Qualitative Results}
 
-\begin{table}[h]
-  \centering
-  \caption{Case-level results for the first 10 test cases.}
-  \label{tab:cases}
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{lrrrrrrr}
-    \toprule
-    Case & Slices & Noisy MAE & Model MAE & Noisy PSNR & Model PSNR & Noisy SSIM & Model SSIM \\
-    \midrule
-    1000542 & 206 & 0.0045 & 0.0024 & 44.4386 & 48.5405 & 0.9327 & 0.9954 \\
-    1002722 & 206 & 0.0031 & 0.0023 & 47.5008 & 49.3120 & 0.9791 & 0.9930 \\
-    1002807 & 167 & 0.0060 & 0.0035 & 42.0188 & 45.5105 & 0.9217 & 0.9936 \\
-    1003444 & 198 & 0.0046 & 0.0028 & 44.0850 & 47.3513 & 0.9429 & 0.9953 \\
-    1003618 & 211 & 0.0027 & 0.0022 & 48.7816 & 49.9918 & 0.9862 & 0.9939 \\
-    1005201 & 189 & 0.0036 & 0.0022 & 46.3301 & 49.5584 & 0.9579 & 0.9965 \\
-    1005430 & 184 & 0.0044 & 0.0027 & 44.6042 & 47.8435 & 0.9513 & 0.9958 \\
-    1008080 & 197 & 0.0058 & 0.0032 & 42.2767 & 46.2604 & 0.9057 & 0.9923 \\
-    1009859 & 206 & 0.0042 & 0.0028 & 44.7305 & 47.3590 & 0.9621 & 0.9923 \\
-    1010191 & 215 & 0.0038 & 0.0026 & 45.7588 & 48.0494 & 0.9711 & 0.9922 \\
-    \bottomrule
-  \end{tabular}
-  }
-\end{table}
-
-\subsection{Qualitative results}
-
-Figure~\ref{fig:qualitative} shows three representative test cases. Each panel contains the noisy slice, denoised output, clean target, and absolute error map. The denoised outputs are visually closer to the clean targets, and the error maps are weaker after denoising.
+Figure~\ref{fig:qualitative} shows representative 2.5D outputs. The denoised images are visually closer to the clean targets than the noisy inputs, and the absolute error maps are weaker after denoising.
 
 \begin{figure}[h]
   \centering
-  \includegraphics[width=\linewidth]{figures/1000542.png}
-  \includegraphics[width=\linewidth]{figures/1002722.png}
-  \includegraphics[width=\linewidth]{figures/1002807.png}
-  \caption{Qualitative results for three test cases. In each row, the columns are Noisy, Denoised, Clean, and Absolute Error.}
+  \includegraphics[width=\linewidth]{figures/25d/1000542.png}
+  \includegraphics[width=\linewidth]{figures/25d/1002722.png}
+  \includegraphics[width=\linewidth]{figures/25d/1002807.png}
+  \caption{Qualitative results for three held-out test cases using the 2.5D Residual U-Net. In each row, the columns are Noisy, Denoised, Clean, and Absolute Error.}
   \label{fig:qualitative}
 \end{figure}
 
 \section{Discussion}
 
-The results show that a 2D Residual U-Net is a strong baseline for this paired T1 denoising task. The model consistently improves pixel-wise error and structural similarity compared with the noisy input. The large SSIM gain suggests that the model does not merely smooth the image, but also preserves the main anatomical structures.
+The results support two conclusions. First, residual U-Nets are effective baselines for paired T1 MRI denoising: every trained model reduces MAE and MSE and improves PSNR and SSIM compared with the noisy input. Second, 2.5D context is useful but does not require a full 3D model. The 2.5D model has nearly the same computational cost as the 2D model while giving the best PSNR and SSIM in this experiment.
 
-There are several limitations. First, the model processes axial slices independently and does not explicitly use 3D context from adjacent slices. A 2.5D model with neighboring slices as channels, or a 3D U-Net, may further improve consistency across slices. Second, the evaluation is performed on normalized resized 2D slices rather than original-resolution 3D volumes. Third, optional engineering improvements such as early stopping, mixed precision, and data augmentation are implemented in the codebase but are not part of the reported full-run results; using them in the final result would require retraining and updating the metrics.
+The 3D result should be interpreted as a practical baseline rather than a fully optimized volumetric system. Full-volume 3D inference is expensive, so the implemented model uses patch training and center-slice prediction with fixed depth context during evaluation. This reduces memory use but also limits global anatomical context and may introduce train-test differences. A stronger 3D experiment would use more patches per case, longer training, and overlap-averaged sliding-window inference over the whole volume.
 
 \section{Conclusion}
 
-This project implements a complete supervised T1 MRI denoising experiment. On 90 held-out test cases, the Residual U-Net improves MAE, MSE, PSNR, and SSIM over the noisy baseline, with PSNR improvement in all test cases. The experiment is simple, reproducible, and suitable as a course final-project baseline for medical image denoising.
+This project implements and compares 2D, 2.5D, and 3D residual U-Nets for supervised T1 MRI denoising. On the 600-case dataset with 90 held-out test cases, all learned models improve over the noisy baseline. The 2.5D model performs best among the implemented variants, showing that adjacent-slice context is a good trade-off between accuracy and implementation complexity for this course project.
 
-\section*{Code availability}
+\section*{Code Availability}
 
 The code and report files are available at \url{https://github.com/liuxiangyu666777888/Computational_Neurobiology}.
 

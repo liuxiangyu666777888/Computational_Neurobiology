@@ -1,9 +1,18 @@
-\begin{thebibliography}{3}
+\begin{thebibliography}{4}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi: #1}\else
   \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[{\c{C}}i{\c{c}}ek et~al.(2016){\c{C}}i{\c{c}}ek, Abdulkadir, Lienkamp,
+  Brox, and Ronneberger]{Cicek20163DUNet}
+{\"O}zg{\"u}n {\c{C}}i{\c{c}}ek, Ahmed Abdulkadir, Soeren~S. Lienkamp, Thomas
+  Brox, and Olaf Ronneberger.
+\newblock 3d u-net: Learning dense volumetric segmentation from sparse
+  annotation.
+\newblock In \emph{Medical Image Computing and Computer-Assisted Intervention},
+  pages 424--432. Springer, 2016.
 
 \bibitem[Kingma and Ba(2015)]{Kingma2015Adam}
 Diederik~P. Kingma and Jimmy Ba.
