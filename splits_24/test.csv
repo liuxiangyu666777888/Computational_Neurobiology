@@ -1,0 +1,4 @@
+caseid,noisy_path,clean_path
+1000381,1000381/T1_noisy.nii.gz,1000381/T1_clean.nii.gz
+1003456,1003456/T1_noisy.nii.gz,1003456/T1_clean.nii.gz
+1076684,1076684/T1_noisy.nii.gz,1076684/T1_clean.nii.gz

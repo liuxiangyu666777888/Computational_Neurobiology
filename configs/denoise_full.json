@@ -1,0 +1,39 @@
+{
+  "task": "t1_noise_denoising",
+  "data_root": "data/cn_project_t1_noise2",
+  "splits_dir": "splits",
+  "out_dir": "runs/denoise_unet",
+  "seed": 42,
+  "split": {
+    "train_ratio": 0.7,
+    "val_ratio": 0.15,
+    "test_ratio": 0.15
+  },
+  "model": {
+    "name": "ResidualUNet2D",
+    "input_channels": 1,
+    "base_channels": 32,
+    "target_size": 256
+  },
+  "training": {
+    "epochs": 40,
+    "batch_size": 24,
+    "learning_rate": 0.0001,
+    "weight_decay": 0.00001,
+    "loss": "L1 + 0.2 * MSE",
+    "shuffle_slices": false,
+    "early_stopping_patience": 0,
+    "min_delta": 0.000001,
+    "lr_scheduler": null,
+    "available_lr_scheduler": "ReduceLROnPlateau",
+    "lr_factor": 0.5,
+    "lr_patience": 5,
+    "gradient_clip_norm": 1.0,
+    "amp": false,
+    "augmentation": false
+  },
+  "evaluation": {
+    "metrics": ["MAE", "MSE", "PSNR", "SSIM"],
+    "save_figures": 3
+  }
+}
